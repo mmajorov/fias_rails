@@ -39,7 +39,7 @@ class ObjectHash < Nokogiri::XML::SAX::Document
   end
 end
 
-namespace :fias do
+namespace :fias_rails do
   desc 'Fias loading'
 
   def process(prefix, object)
