@@ -1,4 +1,5 @@
 require 'nokogiri'
+require 'httparty'
 
 class ObjectHash < Nokogiri::XML::SAX::Document
   attr_accessor :object_saver, :object, :count, :created, :all_count
@@ -40,10 +41,10 @@ class ObjectHash < Nokogiri::XML::SAX::Document
 end
 
 namespace :fias_rails do
-  desc 'Fias loading'
+  FIAS_DIR = Rails.root.join('tmp', 'fias')
 
   def process(prefix, object)
-    dir = "#{Rails.root}/files/fias/upload/"
+    dir = FIAS_DIR
     Dir.foreach(dir) { |file|
       if (file.start_with? prefix)
         parser = Nokogiri::XML::SAX::Parser.new(object)
@@ -62,13 +63,58 @@ namespace :fias_rails do
     p "#{object.object} " + object.report
   end
 
+  desc 'Clear all tables'
   task :clear => :environment  do
     [Fias::AddressObject, Fias::HouseObject, Fias::EstateStatus, Fias::AddressObjectType, Fias::CurrentStatus, Fias::ActualStatus,
      Fias::OperationStatus, Fias::CenterStatus, Fias::IntervalStatus, Fias::HouseStateStatus, Fias::StructureStatus].each { |model| model.delete_all}
     p 'Tables was cleared'
   end
 
-  namespace :upload do
+  desc 'Download xml base'
+  task :download => :environment do
+    opts = {
+      body: %(<?xml version="1.0" encoding="utf-8"?>
+              <soap:Envelope
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+              <soap:Body>
+              <GetLastDownloadFileInfo
+                xmlns="http://fias.nalog.ru/WebServices/Public/DownloadService.asmx/" />
+              </soap:Body>
+              </soap:Envelope>
+              ),
+      headers: {
+        'SOAPAction' => 'http://fias.nalog.ru/WebServices/Public/DownloadService.asmx/GetLastDownloadFileInfo',
+        'Content-Type' => 'text/xml; encoding=utf-8'
+      }
+    }
+
+    response = HTTParty.post('http://fias.nalog.ru/WebServices/Public/DownloadService.asmx',opts)
+    matches = response.body.match(/<FiasCompleteXmlUrl>(.*)<\/FiasCompleteXmlUrl>/)
+    url = matches[1] if matches
+
+    uri = URI(url)
+    FileUtils.mkdir_p FIAS_DIR unless File.exists? FIAS_DIR
+
+    puts 'Starting download'
+    Net::HTTP.start(uri.host, uri.port) do |http|
+      request = Net::HTTP::Get.new uri.request_uri
+      http.request request do |response|
+        open "#{FIAS_DIR}/fias.xml.rar", 'wb' do |io|
+          response.read_body do |chunk|
+            io.write chunk
+          end
+        end
+      end
+    end
+    puts 'Download finished'
+
+    puts 'Starting unrar'
+    `unrar x #{FIAS_DIR}/fias.xml.rar #{FIAS_DIR}`
+  end
+
+  namespace :import do
     desc 'Fias addresses initial loading'
     task :addresses => :environment do
       upload_task(Fias::AddressObject, 'AS_ADDROBJ_', 'Object')
@@ -137,6 +183,10 @@ namespace :fias_rails do
     task :structure_statuses => :environment do
       upload_task(StructureStatus, 'AS_STRSTAT_')
     end
+
+    desc 'Fias all data initial loading'
+    task :all => [:directories, :addresses, :houses, :estate_statuses, :address_object_types, :current_statuses,
+                  :actual_statuses, :operation_statuses, :center_statuses, :interval_statuses, :house_state_statuses, :structure_statuses]
   end
 
   namespace :update do

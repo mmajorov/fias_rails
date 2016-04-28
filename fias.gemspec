@@ -17,7 +17,8 @@ Gem::Specification.new do |s|
   s.test_files = Dir["test/**/*"]
   s.require_paths = ['lib', 'app']
 
-  s.add_dependency "rails", "~> 4.2.0"
+  s.add_dependency 'rails', '~> 4.2.0'
+  s.add_dependency 'httparty'
 
   s.add_dependency 'pg'
   s.add_dependency 'nokogiri'
