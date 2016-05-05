@@ -44,5 +44,7 @@ class CreateFiasAddressObjects < ActiveRecord::Migration
     add_index(:fias_address_objects, :aoguid)
     add_index(:fias_address_objects, :parentguid)
     add_index(:fias_address_objects, :aolevel)
+    add_index(:fias_address_objects, :actstatus)
+    add_index(:fias_address_objects, :livestatus)
   end
 end
